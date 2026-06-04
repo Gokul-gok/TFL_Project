@@ -1,5 +1,5 @@
-CREATE DATABASE IF NOT EXISTS yamini_tfl_proj;
-USE yamini_tfl_proj;
+CREATE DATABASE IF NOT EXISTS gokul_tfl_proj;
+USE gokul_tfl_proj;
 
 CREATE EXTERNAL TABLE IF NOT EXISTS dim_date (
   date_id      INT,
@@ -14,7 +14,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS dim_date (
 )
 ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
 STORED AS TEXTFILE
-LOCATION '/tmp/yamini/tfl_project1/dim_date'
+LOCATION '/tmp/gokul/tfl_project1/dim_date'
 TBLPROPERTIES ('serialization.null.format'='null');
 
 CREATE EXTERNAL TABLE IF NOT EXISTS dim_lines (
@@ -27,7 +27,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS dim_lines (
 )
 ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
 STORED AS TEXTFILE
-LOCATION '/tmp/yamini/tfl_project1/dim_lines'
+LOCATION '/tmp/gokul/tfl_project1/dim_lines'
 TBLPROPERTIES ('serialization.null.format'='null');
 
 CREATE EXTERNAL TABLE IF NOT EXISTS dim_networks (
@@ -39,7 +39,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS dim_networks (
 )
 ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
 STORED AS TEXTFILE
-LOCATION '/tmp/yamini/tfl_project1/dim_networks'
+LOCATION '/tmp/gokul/tfl_project1/dim_networks'
 TBLPROPERTIES ('serialization.null.format'='null');
 
 CREATE EXTERNAL TABLE IF NOT EXISTS dim_stations (
@@ -58,7 +58,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS dim_stations (
 )
 ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
 STORED AS TEXTFILE
-LOCATION '/tmp/yamini/tfl_project1/dim_stations'
+LOCATION '/tmp/gokul/tfl_project1/dim_stations'
 TBLPROPERTIES ('serialization.null.format'='null');
 
 CREATE EXTERNAL TABLE IF NOT EXISTS fact_station_lines (
@@ -72,7 +72,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS fact_station_lines (
 )
 ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
 STORED AS TEXTFILE
-LOCATION '/tmp/yamini/tfl_project1/fact_station_lines'
+LOCATION '/tmp/gokul/tfl_project1/fact_station_lines'
 TBLPROPERTIES ('serialization.null.format'='null');
 
 CREATE EXTERNAL TABLE IF NOT EXISTS fact_passenger_entry_exit (
@@ -88,7 +88,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS fact_passenger_entry_exit (
 )
 ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
 STORED AS TEXTFILE
-LOCATION '/tmp/yamini/tfl_project1/fact_passenger_entry_exit'
+LOCATION '/tmp/gokul/tfl_project1/fact_passenger_entry_exit'
 TBLPROPERTIES ('serialization.null.format'='null');
 
 -- Busiest stations per year
@@ -122,7 +122,7 @@ GROUP BY s.station_name
 ORDER BY num_lines DESC;
 
 -- Save the results as Gold-layer tables
-CREATE TABLE yamini_tfl_gold_busiest_stations AS
+CREATE TABLE gokul_tfl_gold_busiest_stations AS
 SELECT
     d.year,
     s.station_name,
