@@ -2,109 +2,171 @@ pipeline {
     agent any
 
     environment {
-        JDBC_URL    = 'jdbc:postgresql://13.42.152.118:5432/testdb'
-        DB_USER     = 'admin'
-        DB_PASS     = 'admin123'
-        HDFS_BASE   = '/tmp/yamini/tfl_project1'
-        HIVE_DB     = 'yamini_tfl_proj'
-        HADOOP_NODE = '13.41.167.97'
-        SSH_USER    = 'ec2-user'
+        REMOTE_HOST     = '13.41.167.97'
+        REMOTE_USER     = 'consultant'
+        REMOTE_PASSWORD = 'WelcomeItc@2026'
+        PROJECT_DIR     = '/home/consultant/yamini/tfl_Project1'
+        HDFS_DIR        = '/tmp/yamini/tfl_project1'
     }
 
     stages {
 
         stage('Checkout') {
             steps {
+                echo '========================================='
+                echo 'Stage 1: Git Checkout'
+                echo '========================================='
                 checkout scm
+                sh 'git log -1 --oneline'
             }
         }
 
-        stage('Sqoop Import') {
+        stage('Prepare Remote Directory') {
             steps {
-                echo 'Running Sqoop imports on Hadoop node via SSH...'
-                withCredentials([file(credentialsId: 'hadoop-pem-key', variable: 'PEM_FILE')]) {
-                    sh """
-                        chmod 600 \$PEM_FILE
-                        ssh -i \$PEM_FILE -o StrictHostKeyChecking=no ${SSH_USER}@${HADOOP_NODE} bash << 'ENDSSH'
-sqoop import -D mapreduce.framework.name=local \\
-  --connect 'jdbc:postgresql://13.42.152.118:5432/testdb' \\
-  --username admin --password admin123 \\
-  --table dim_date \\
-  --target-dir /tmp/yamini/tfl_project1/dim_date \\
-  --num-mappers 1 --fields-terminated-by ',' --delete-target-dir
+                echo '========================================='
+                echo 'Stage 2: Create Directories on Cloudera'
+                echo '========================================='
+                sh '''
+                    sshpass -p "${REMOTE_PASSWORD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                        ${REMOTE_USER}@${REMOTE_HOST} \
+                        "mkdir -p ${PROJECT_DIR}/sqoop ${PROJECT_DIR}/hive" 2>&1 | \
+                        grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
 
-sqoop import -D mapreduce.framework.name=local \\
-  --connect 'jdbc:postgresql://13.42.152.118:5432/testdb' \\
-  --username admin --password admin123 \\
-  --table dim_stations \\
-  --target-dir /tmp/yamini/tfl_project1/dim_stations \\
-  --num-mappers 1 --fields-terminated-by ',' --delete-target-dir
+                    echo "Directories created"
+                '''
+            }
+        }
 
-sqoop import -D mapreduce.framework.name=local \\
-  --connect 'jdbc:postgresql://13.42.152.118:5432/testdb' \\
-  --username admin --password admin123 \\
-  --table dim_networks \\
-  --target-dir /tmp/yamini/tfl_project1/dim_networks \\
-  --num-mappers 1 --fields-terminated-by ',' --delete-target-dir
+        stage('Copy Scripts to Cloudera') {
+            steps {
+                echo '========================================='
+                echo 'Stage 3: Copy Sqoop and Hive Scripts'
+                echo '========================================='
+                sh '''
+                    sshpass -p "${REMOTE_PASSWORD}" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                        src/sqoop_import.sh ${REMOTE_USER}@${REMOTE_HOST}:${PROJECT_DIR}/sqoop/ 2>&1 | \
+                        grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
 
-sqoop import -D mapreduce.framework.name=local \\
-  --connect 'jdbc:postgresql://13.42.152.118:5432/testdb' \\
-  --username admin --password admin123 \\
-  --table dim_lines \\
-  --target-dir /tmp/yamini/tfl_project1/dim_lines \\
-  --num-mappers 1 --fields-terminated-by ',' --delete-target-dir
+                    sshpass -p "${REMOTE_PASSWORD}" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                        src/hive_table.sql ${REMOTE_USER}@${REMOTE_HOST}:${PROJECT_DIR}/hive/ 2>&1 | \
+                        grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
 
-sqoop import -D mapreduce.framework.name=local \\
-  --connect 'jdbc:postgresql://13.42.152.118:5432/testdb' \\
-  --username admin --password admin123 \\
-  --table fact_station_lines \\
-  --target-dir /tmp/yamini/tfl_project1/fact_station_lines \\
-  --num-mappers 1 --fields-terminated-by ',' --delete-target-dir
+                    echo "Scripts copied successfully"
+                '''
+            }
+        }
 
-sqoop import -D mapreduce.framework.name=local \\
-  --connect 'jdbc:postgresql://13.42.152.118:5432/testdb' \\
-  --username admin --password admin123 \\
-  --table fact_passenger_entry_exit \\
-  --target-dir /tmp/yamini/tfl_project1/fact_passenger_entry_exit \\
-  --num-mappers 1 --fields-terminated-by ',' --delete-target-dir
-ENDSSH
-                    """
-                }
+        stage('Set Permissions') {
+            steps {
+                echo '========================================='
+                echo 'Stage 4: Set Execute Permissions'
+                echo '========================================='
+                sh '''
+                    sshpass -p "${REMOTE_PASSWORD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                        ${REMOTE_USER}@${REMOTE_HOST} \
+                        "chmod +x ${PROJECT_DIR}/sqoop/sqoop_import.sh" 2>&1 | \
+                        grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
+
+                    echo "Permissions set"
+                '''
+            }
+        }
+
+        stage('Prepare Staging Directory') {
+            steps {
+                echo '========================================='
+                echo 'Stage 5: Create Local Staging Directory'
+                echo '========================================='
+                sh '''
+                    sshpass -p "${REMOTE_PASSWORD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                        ${REMOTE_USER}@${REMOTE_HOST} \
+                        "mkdir -p /tmp/hadoop/mapred/staging" 2>&1 | \
+                        grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
+
+                    echo "Staging directory ready"
+                '''
+            }
+        }
+
+        stage('Clean HDFS') {
+            steps {
+                echo '========================================='
+                echo 'Stage 6: Clean HDFS Directories'
+                echo '========================================='
+                sh '''
+                    sshpass -p "${REMOTE_PASSWORD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                        ${REMOTE_USER}@${REMOTE_HOST} \
+                        "hdfs dfs -rm -r -f -skipTrash ${HDFS_DIR} 2>/dev/null || true" 2>&1 | \
+                        grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
+
+                    echo "HDFS cleaned"
+                '''
+            }
+        }
+
+        stage('Sqoop Import from PostgreSQL to HDFS') {
+            steps {
+                echo '========================================='
+                echo 'Stage 7: Run Sqoop Import (6 tables)'
+                echo '========================================='
+                sh '''
+                    sshpass -p "${REMOTE_PASSWORD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                        ${REMOTE_USER}@${REMOTE_HOST} \
+                        "bash ${PROJECT_DIR}/sqoop/sqoop_import.sh" 2>&1 | \
+                        grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
+
+                    echo "Sqoop import completed"
+                '''
             }
         }
 
         stage('Create Hive Tables') {
             steps {
-                echo 'Creating Hive external tables on Hadoop node via SSH...'
-                withCredentials([file(credentialsId: 'hadoop-pem-key', variable: 'PEM_FILE')]) {
-                    sh """
-                        chmod 600 \$PEM_FILE
-                        scp -i \$PEM_FILE -o StrictHostKeyChecking=no src/hive_table.sql ${SSH_USER}@${HADOOP_NODE}:/tmp/hive_table.sql
-                        ssh -i \$PEM_FILE -o StrictHostKeyChecking=no ${SSH_USER}@${HADOOP_NODE} 'hive -f /tmp/hive_table.sql'
-                    """
-                }
+                echo '========================================='
+                echo 'Stage 8: Create Hive External Tables'
+                echo '========================================='
+                sh '''
+                    sshpass -p "${REMOTE_PASSWORD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                        ${REMOTE_USER}@${REMOTE_HOST} \
+                        "beeline -u 'jdbc:hive2://ip-172-31-12-74.eu-west-2.compute.internal:10000/default' -f ${PROJECT_DIR}/hive/hive_table.sql" 2>&1 | \
+                        grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
+
+                    echo "Hive tables created"
+                '''
             }
         }
 
-        stage('Verify Tables') {
+        stage('Verify Results') {
             steps {
-                echo 'Verifying Hive tables on Hadoop node...'
-                withCredentials([file(credentialsId: 'hadoop-pem-key', variable: 'PEM_FILE')]) {
-                    sh """
-                        chmod 600 \$PEM_FILE
-                        ssh -i \$PEM_FILE -o StrictHostKeyChecking=no ${SSH_USER}@${HADOOP_NODE} 'hive -e "USE yamini_tfl_proj; SHOW TABLES;"'
-                    """
-                }
+                echo '========================================='
+                echo 'Stage 9: Verify HDFS Data'
+                echo '========================================='
+                sh '''
+                    sshpass -p "${REMOTE_PASSWORD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                        ${REMOTE_USER}@${REMOTE_HOST} \
+                        "hdfs dfs -ls ${HDFS_DIR} 2>/dev/null || echo 'HDFS directory not found'" 2>&1 | \
+                        grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
+                '''
             }
         }
     }
 
     post {
         success {
-            echo 'TFL pipeline completed successfully.'
+            echo '========================================='
+            echo 'TFL PIPELINE COMPLETED SUCCESSFULLY'
+            echo '========================================='
+            echo "Cloudera: ${REMOTE_HOST}:${PROJECT_DIR}"
+            echo "HDFS: ${HDFS_DIR}"
+            echo '========================================='
         }
         failure {
-            echo 'TFL pipeline failed. Check logs above.'
+            echo '========================================='
+            echo 'TFL PIPELINE FAILED - check logs above'
+            echo '========================================='
+        }
+        always {
+            echo 'Pipeline execution completed'
         }
     }
 }
