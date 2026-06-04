@@ -8,8 +8,8 @@ pipeline {
         HDFS_BASE   = '/tmp/yamini/tfl_project1'
         HIVE_DB     = 'yamini_tfl_proj'
         HADOOP_NODE = '13.41.167.97'
-        SSH_USER    = 'ubuntu'
-        SSH_KEY     = '/var/lib/jenkins/.ssh/hadoop.pem'
+        SSH_USER    = 'ec2-user'
+        SSH_KEY     = '/var/lib/jenkins/test_key.pem'
     }
 
     stages {
