@@ -9,7 +9,6 @@ pipeline {
         HIVE_DB     = 'yamini_tfl_proj'
         HADOOP_NODE = '13.41.167.97'
         SSH_USER    = 'ec2-user'
-        SSH_KEY     = '/var/lib/jenkins/test_key.pem'
     }
 
     stages {
@@ -23,8 +22,10 @@ pipeline {
         stage('Sqoop Import') {
             steps {
                 echo 'Running Sqoop imports on Hadoop node via SSH...'
-                sh """
-                    ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ${SSH_USER}@${HADOOP_NODE} bash << 'ENDSSH'
+                withCredentials([file(credentialsId: 'hadoop-pem-key', variable: 'PEM_FILE')]) {
+                    sh """
+                        chmod 600 \$PEM_FILE
+                        ssh -i \$PEM_FILE -o StrictHostKeyChecking=no ${SSH_USER}@${HADOOP_NODE} bash << 'ENDSSH'
 sqoop import -D mapreduce.framework.name=local \\
   --connect 'jdbc:postgresql://13.42.152.118:5432/testdb' \\
   --username admin --password admin123 \\
@@ -67,26 +68,33 @@ sqoop import -D mapreduce.framework.name=local \\
   --target-dir /tmp/yamini/tfl_project1/fact_passenger_entry_exit \\
   --num-mappers 1 --fields-terminated-by ',' --delete-target-dir
 ENDSSH
-                """
+                    """
+                }
             }
         }
 
         stage('Create Hive Tables') {
             steps {
                 echo 'Creating Hive external tables on Hadoop node via SSH...'
-                sh """
-                    scp -i ${SSH_KEY} -o StrictHostKeyChecking=no src/hive_table.sql ${SSH_USER}@${HADOOP_NODE}:/tmp/hive_table.sql
-                    ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ${SSH_USER}@${HADOOP_NODE} 'hive -f /tmp/hive_table.sql'
-                """
+                withCredentials([file(credentialsId: 'hadoop-pem-key', variable: 'PEM_FILE')]) {
+                    sh """
+                        chmod 600 \$PEM_FILE
+                        scp -i \$PEM_FILE -o StrictHostKeyChecking=no src/hive_table.sql ${SSH_USER}@${HADOOP_NODE}:/tmp/hive_table.sql
+                        ssh -i \$PEM_FILE -o StrictHostKeyChecking=no ${SSH_USER}@${HADOOP_NODE} 'hive -f /tmp/hive_table.sql'
+                    """
+                }
             }
         }
 
         stage('Verify Tables') {
             steps {
                 echo 'Verifying Hive tables on Hadoop node...'
-                sh """
-                    ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ${SSH_USER}@${HADOOP_NODE} 'hive -e "USE yamini_tfl_proj; SHOW TABLES;"'
-                """
+                withCredentials([file(credentialsId: 'hadoop-pem-key', variable: 'PEM_FILE')]) {
+                    sh """
+                        chmod 600 \$PEM_FILE
+                        ssh -i \$PEM_FILE -o StrictHostKeyChecking=no ${SSH_USER}@${HADOOP_NODE} 'hive -e "USE yamini_tfl_proj; SHOW TABLES;"'
+                    """
+                }
             }
         }
     }
