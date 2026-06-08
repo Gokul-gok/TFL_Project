@@ -9,8 +9,8 @@ spark = SparkSession.builder \
 
 spark.sparkContext.setLogLevel("WARN")
 
-HDFS_BASE   = "/tmp/gokul/TFL_project"
-OUTPUT_BASE = "/tmp/gokul/TFL_project/gold"
+HDFS_BASE   = "/tmp/gokul/TFL_project_new"
+OUTPUT_BASE = "/tmp/gokul/TFL_project_new/gold"
 HIVE_DB     = "gokul_tfl_etl"
 
 spark.sql(f"CREATE DATABASE IF NOT EXISTS {HIVE_DB}")
