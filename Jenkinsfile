@@ -5,12 +5,11 @@ pipeline {
         REMOTE_HOST     = '13.41.167.97'
         REMOTE_USER     = 'consultant'
         REMOTE_PASSWORD = 'WelcomeItc@2026'
-        PROJECT_DIR     = '/home/consultant/yamini/tfl_Project1'
-        HDFS_DIR        = '/tmp/yamini/tfl_project1'
+        PROJECT_DIR     = '/home/consultant/gokul/TFL_Project'
+        HDFS_DIR        = '/tmp/gokul/TFL_project'
     }
 
     stages {
-
         stage('Checkout') {
             steps {
                 echo '========================================='
@@ -48,7 +47,7 @@ pipeline {
                         grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
 
                     sshpass -p "${REMOTE_PASSWORD}" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-                        src/hive_table.sql ${REMOTE_USER}@${REMOTE_HOST}:${PROJECT_DIR}/hive/ 2>&1 | \
+                        src/hive_ddl.hql ${REMOTE_USER}@${REMOTE_HOST}:${PROJECT_DIR}/hive/ 2>&1 | \
                         grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
 
                     echo "Scripts copied successfully"
@@ -75,14 +74,13 @@ pipeline {
         stage('Prepare Staging Directory') {
             steps {
                 echo '========================================='
-                echo 'Stage 5: Create Local Staging Directory'
+                echo 'Stage 5: Create local staging directory'
                 echo '========================================='
                 sh '''
                     sshpass -p "${REMOTE_PASSWORD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
                         ${REMOTE_USER}@${REMOTE_HOST} \
                         "mkdir -p /tmp/hadoop/mapred/staging" 2>&1 | \
                         grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
-
                     echo "Staging directory ready"
                 '''
             }
@@ -91,14 +89,13 @@ pipeline {
         stage('Clean HDFS') {
             steps {
                 echo '========================================='
-                echo 'Stage 6: Clean HDFS Directories'
+                echo 'Stage 5: Clean HDFS directories'
                 echo '========================================='
                 sh '''
                     sshpass -p "${REMOTE_PASSWORD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
                         ${REMOTE_USER}@${REMOTE_HOST} \
                         "hdfs dfs -rm -r -f -skipTrash ${HDFS_DIR} 2>/dev/null || true" 2>&1 | \
                         grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
-
                     echo "HDFS cleaned"
                 '''
             }
@@ -107,7 +104,7 @@ pipeline {
         stage('Sqoop Import from PostgreSQL to HDFS') {
             steps {
                 echo '========================================='
-                echo 'Stage 7: Run Sqoop Import (6 tables)'
+                echo 'Stage 5: Run Sqoop Import (6 tables)'
                 echo '========================================='
                 sh '''
                     sshpass -p "${REMOTE_PASSWORD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
@@ -120,15 +117,35 @@ pipeline {
             }
         }
 
+        stage('Run Spark Analysis') {
+            steps {
+                echo '========================================='
+                echo 'Stage 7: Run PySpark Transformations'
+                echo '========================================='
+                sh '''
+                    sshpass -p "${REMOTE_PASSWORD}" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                        src/tfl_spark_analysis.py ${REMOTE_USER}@${REMOTE_HOST}:${PROJECT_DIR}/ 2>&1 | \
+                        grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
+
+                    sshpass -p "${REMOTE_PASSWORD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                        ${REMOTE_USER}@${REMOTE_HOST} \
+                        "spark-submit --master local[*] ${PROJECT_DIR}/tfl_spark_analysis.py" 2>&1 | \
+                        grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
+
+                    echo "Spark analysis completed"
+                '''
+            }
+        }
+
         stage('Create Hive Tables') {
             steps {
                 echo '========================================='
-                echo 'Stage 8: Create Hive External Tables'
+                echo 'Stage 6: Create Hive External Tables'
                 echo '========================================='
                 sh '''
                     sshpass -p "${REMOTE_PASSWORD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
                         ${REMOTE_USER}@${REMOTE_HOST} \
-                        "beeline -u 'jdbc:hive2://ip-172-31-12-74.eu-west-2.compute.internal:10000/default' -f ${PROJECT_DIR}/hive/hive_table.sql" 2>&1 | \
+                        "beeline -u 'jdbc:hive2://ip-172-31-12-74.eu-west-2.compute.internal:10000/default' -f ${PROJECT_DIR}/hive/hive_ddl.hql" 2>&1 | \
                         grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
 
                     echo "Hive tables created"
@@ -139,7 +156,7 @@ pipeline {
         stage('Verify Results') {
             steps {
                 echo '========================================='
-                echo 'Stage 9: Verify HDFS Data'
+                echo 'Stage 7: Verify HDFS Data'
                 echo '========================================='
                 sh '''
                     sshpass -p "${REMOTE_PASSWORD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
