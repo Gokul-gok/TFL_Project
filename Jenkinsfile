@@ -85,6 +85,5 @@ post {
         echo 'SQOOP INCREMENTAL LOAD FAILED'
     }
 }
-```
 
 }
