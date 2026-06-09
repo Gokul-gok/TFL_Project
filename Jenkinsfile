@@ -36,7 +36,10 @@ stages {
     }
 
     stage('Copy Incremental Script') {
-        steps {
+    steps {
+           echo '========================================='
+           echo 'Stage 3: Copy increment Script'
+           echo '=========================================' 
             sh '''
                 sshpass -p "${REMOTE_PASSWORD}" scp -o StrictHostKeyChecking=no \
                 src/sqoop_import.sh \
