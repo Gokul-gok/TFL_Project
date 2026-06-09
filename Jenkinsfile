@@ -1,189 +1,90 @@
 pipeline {
-    agent any
+agent any
 
-    environment {
-        REMOTE_HOST     = '13.41.167.97'
-        REMOTE_USER     = 'consultant'
-        REMOTE_PASSWORD = 'WelcomeItc@2026'
-        PROJECT_DIR     = '/home/consultant/gokul/TFL_project_new'
-        HDFS_DIR        = '/tmp/gokul/TFL_project_new'
-    }
+```
+environment {
+    REMOTE_HOST     = '13.41.167.97'
+    REMOTE_USER     = 'consultant'
+    REMOTE_PASSWORD = 'WelcomeItc@2026'
 
-    stages {
-        stage('Checkout') {
-            steps {
-                echo '========================================='
-                echo 'Stage 1: Git Checkout'
-                echo '========================================='
-                checkout scm
-                sh 'git log -1 --oneline'
-            }
-        }
+    PG_HOST         = '13.42.152.118'
+    PG_PORT         = '5432'
+    PG_DB           = 'testdb'
+    PG_USER         = 'admin'
+    PG_PASSWORD     = 'admin123'
+    PG_SCHEMA       = 'aparna'
 
-        stage('Prepare Remote Directory') {
-            steps {
-                echo '========================================='
-                echo 'Stage 2: Create Directories on Cloudera'
-                echo '========================================='
-                sh '''
-                    sshpass -p "${REMOTE_PASSWORD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-                        ${REMOTE_USER}@${REMOTE_HOST} \
-                        "mkdir -p ${PROJECT_DIR}/sqoop ${PROJECT_DIR}/hive" 2>&1 | \
-                        grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
+    HDFS_DIR        = '/tmp/tfl_project/hadoop/incremental_load'
+}
 
-                    echo "Directories created"
-                '''
-            }
-        }
+stages {
 
-        stage('Copy Scripts to Cloudera') {
-            steps {
-                echo '========================================='
-                echo 'Stage 3: Copy Sqoop and Hive Scripts'
-                echo '========================================='
-                sh '''
-                    sshpass -p "${REMOTE_PASSWORD}" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-                        src/sqoop_import.sh ${REMOTE_USER}@${REMOTE_HOST}:${PROJECT_DIR}/sqoop/ 2>&1 | \
-                        grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
-
-                    sshpass -p "${REMOTE_PASSWORD}" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-                        src/hive_ddl.hql ${REMOTE_USER}@${REMOTE_HOST}:${PROJECT_DIR}/hive/ 2>&1 | \
-                        grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
-
-                    echo "Scripts copied successfully"
-                '''
-            }
-        }
-
-        stage('Set Permissions') {
-            steps {
-                echo '========================================='
-                echo 'Stage 4: Set Execute Permissions'
-                echo '========================================='
-                sh '''
-                    sshpass -p "${REMOTE_PASSWORD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-                        ${REMOTE_USER}@${REMOTE_HOST} \
-                        "chmod +x ${PROJECT_DIR}/sqoop/sqoop_import.sh" 2>&1 | \
-                        grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
-
-                    echo "Permissions set"
-                '''
-            }
-        }
-
-        stage('Prepare Staging Directory') {
-            steps {
-                echo '========================================='
-                echo 'Stage 5: Create local staging directory'
-                echo '========================================='
-                sh '''
-                    sshpass -p "${REMOTE_PASSWORD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-                        ${REMOTE_USER}@${REMOTE_HOST} \
-                        "mkdir -p /tmp/hadoop/mapred/staging" 2>&1 | \
-                        grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
-                    echo "Staging directory ready"
-                '''
-            }
-        }
-
-        stage('Clean HDFS') {
-            steps {
-                echo '========================================='
-                echo 'Stage 5: Clean HDFS directories'
-                echo '========================================='
-                sh '''
-                    sshpass -p "${REMOTE_PASSWORD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-                        ${REMOTE_USER}@${REMOTE_HOST} \
-                        "hdfs dfs -rm -r -f -skipTrash ${HDFS_DIR} 2>/dev/null || true" 2>&1 | \
-                        grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
-                    echo "HDFS cleaned"
-                '''
-            }
-        }
-
-        stage('Sqoop Import from PostgreSQL to HDFS') {
-            steps {
-                echo '========================================='
-                echo 'Stage 5: Run Sqoop Import (6 tables)'
-                echo '========================================='
-                sh '''
-                    sshpass -p "${REMOTE_PASSWORD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-                        ${REMOTE_USER}@${REMOTE_HOST} \
-                        "bash ${PROJECT_DIR}/sqoop/sqoop_import.sh" 2>&1 | \
-                        grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
-
-                    echo "Sqoop import completed"
-                '''
-            }
-        }
-
-        stage('Run Spark Analysis') {
-            steps {
-                echo '========================================='
-                echo 'Stage 7: Run PySpark Transformations'
-                echo '========================================='
-                sh '''
-                    sshpass -p "${REMOTE_PASSWORD}" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-                        src/tfl_spark_analysis.py ${REMOTE_USER}@${REMOTE_HOST}:${PROJECT_DIR}/ 2>&1 | \
-                        grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
-
-                    sshpass -p "${REMOTE_PASSWORD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-                        ${REMOTE_USER}@${REMOTE_HOST} \
-                        "spark-submit --master local[*] ${PROJECT_DIR}/tfl_spark_analysis.py" 2>&1 | \
-                        grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
-
-                    echo "Spark analysis completed"
-                '''
-            }
-        }
-
-        stage('Create Hive Tables') {
-            steps {
-                echo '========================================='
-                echo 'Stage 6: Create Hive External Tables'
-                echo '========================================='
-                sh '''
-                    sshpass -p "${REMOTE_PASSWORD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-                        ${REMOTE_USER}@${REMOTE_HOST} \
-                        "beeline -u 'jdbc:hive2://ip-172-31-12-74.eu-west-2.compute.internal:10000/default' -f ${PROJECT_DIR}/hive/hive_ddl.hql" 2>&1 | \
-                        grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
-
-                    echo "Hive tables created"
-                '''
-            }
-        }
-
-        stage('Verify Results') {
-            steps {
-                echo '========================================='
-                echo 'Stage 7: Verify HDFS Data'
-                echo '========================================='
-                sh '''
-                    sshpass -p "${REMOTE_PASSWORD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-                        ${REMOTE_USER}@${REMOTE_HOST} \
-                        "hdfs dfs -ls ${HDFS_DIR} 2>/dev/null || echo 'HDFS directory not found'" 2>&1 | \
-                        grep -v "ITC Big Data Lab" | grep -v "Commands:" | grep -v "HDFS home:" | grep -v "━" || true
-                '''
-            }
+    stage('Checkout') {
+        steps {
+            checkout scm
         }
     }
 
-    post {
-        success {
-            echo '========================================='
-            echo 'TFL PIPELINE COMPLETED SUCCESSFULLY'
-            echo '========================================='
-            echo "Cloudera: ${REMOTE_HOST}:${PROJECT_DIR}"
-            echo "HDFS: ${HDFS_DIR}"
-            echo '========================================='
-        }
-        failure {
-            echo '========================================='
-            echo 'TFL PIPELINE FAILED - check logs above'
-            echo '========================================='
-        }
-        always {
-            echo 'Pipeline execution completed'
+    stage('Prepare HDFS Directory') {
+        steps {
+            sh '''
+                sshpass -p "${REMOTE_PASSWORD}" ssh -o StrictHostKeyChecking=no \
+                ${REMOTE_USER}@${REMOTE_HOST} \
+                "hdfs dfs -mkdir -p ${HDFS_DIR}"
+            '''
         }
     }
+
+    stage('Copy Incremental Script') {
+        steps {
+            sh '''
+                sshpass -p "${REMOTE_PASSWORD}" scp -o StrictHostKeyChecking=no \
+                src/sqoop_incremental_import.sh \
+                ${REMOTE_USER}@${REMOTE_HOST}:/home/${REMOTE_USER}/
+            '''
+        }
+    }
+
+    stage('Run Incremental Import') {
+        steps {
+            sh '''
+                sshpass -p "${REMOTE_PASSWORD}" ssh -o StrictHostKeyChecking=no \
+                ${REMOTE_USER}@${REMOTE_HOST} \
+                "export PGPASSWORD=${PG_PASSWORD};
+                 PG_HOST=${PG_HOST}
+                 PG_PORT=${PG_PORT}
+                 PG_DB=${PG_DB}
+                 PG_USER=${PG_USER}
+                 PG_PASSWORD=${PG_PASSWORD}
+                 PG_SCHEMA=${PG_SCHEMA}
+                 HDFS_DIR=${HDFS_DIR}
+                 bash /home/${REMOTE_USER}/sqoop_incremental_import.sh"
+            '''
+        }
+    }
+
+    stage('Verify HDFS Output') {
+        steps {
+            sh '''
+                sshpass -p "${REMOTE_PASSWORD}" ssh -o StrictHostKeyChecking=no \
+                ${REMOTE_USER}@${REMOTE_HOST} \
+                "hdfs dfs -ls ${HDFS_DIR}"
+            '''
+        }
+    }
+
+}
+
+post {
+
+    success {
+        echo 'SQOOP INCREMENTAL LOAD COMPLETED SUCCESSFULLY'
+    }
+
+    failure {
+        echo 'SQOOP INCREMENTAL LOAD FAILED'
+    }
+}
+```
+
 }
