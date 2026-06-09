@@ -58,7 +58,7 @@ stages {
                  PG_PASSWORD=${PG_PASSWORD}
                  PG_SCHEMA=${PG_SCHEMA}
                  HDFS_DIR=${HDFS_DIR}
-                 bash /home/${REMOTE_USER}/sqoop_incremental_import.sh"
+                 bash /home/${REMOTE_USER}/sqoop_import.sh"
             '''
         }
     }
