@@ -39,7 +39,7 @@ stages {
         steps {
             sh '''
                 sshpass -p "${REMOTE_PASSWORD}" scp -o StrictHostKeyChecking=no \
-                src/sqoop_incremental_import.sh \
+                src/sqoop_import.sh \
                 ${REMOTE_USER}@${REMOTE_HOST}:/home/${REMOTE_USER}/
             '''
         }
