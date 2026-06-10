@@ -12,7 +12,7 @@ PG_PASSWORD="admin123"
 PG_DB="testdb"
 PG_SCHEMA="aparna"
 
-HDFS_BASE="/tmp/aparna/tfl_proj/raw_incremental_load"
+HDFS_BASE="/tmp/gokul/tfl_proj/raw_incremental_load"
 HIVE_DB="tfl_db"
 
 JDBC="jdbc:postgresql://$PG_HOST:$PG_PORT/$PG_DB"
