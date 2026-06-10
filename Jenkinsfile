@@ -14,7 +14,7 @@ environment {
     PG_PASSWORD     = 'admin123'
     PG_SCHEMA       = 'aparna'
 
-    HDFS_DIR        = '/tmp/tfl_project/hadoop/incremental_load'
+    HDFS_DIR        = '/tmp/aparna/tfl_proj/raw_incremental_load'
 }
 
 stages {
