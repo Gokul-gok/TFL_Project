@@ -1,77 +1,155 @@
 #!/bin/bash
+# raw_incremental_load.sh
+# Incremental Load (Clean Version)
 
-echo "========================================="
-echo "Starting Sqoop Incremental Load"
-echo "========================================="
+set -e
 
-PG_CONN="jdbc:postgresql://${PG_HOST}:${PG_PORT}/${PG_DB}"
+# ── Config ──────────────────────────────────────
+PG_HOST="13.42.152.118"
+PG_PORT="5432"
+PG_USER="admin"
+PG_PASSWORD="admin123"
+PG_DB="testdb"
+PG_SCHEMA="aparna"
 
+HDFS_BASE="/tmp/aparna/tfl_proj/raw_incremental_load"
+HIVE_DB="tfl_db"
+
+JDBC="jdbc:postgresql://$PG_HOST:$PG_PORT/$PG_DB"
+
+# ── Export once (GLOBAL for psql + Sqoop) ──────
+export PGPASSWORD="$PG_PASSWORD"
+export PGHOST="$PG_HOST"
+export PGPORT="$PG_PORT"
+export PGUSER="$PG_USER"
+export PGDATABASE="$PG_DB"
+
+# ── Reusable PSQL function ─────────────────────
+run_psql() {
+    psql -t -A -c "$1" | xargs
+}
+
+echo "============================================"
+echo "TfL INCREMENTAL LOAD Started: $(date)"
+echo "============================================"
+
+# ── Tables list ────────────────────────────────
 TABLES=(
-"dim_networks_inc_load"
-"dim_lines_inc_load"
-"dim_stations_inc_load"
-"fact_station_lines_inc_load"
-"dim_date_inc_load"
-"fact_passenger_entry_exit_inc_load"
+    "dim_networks:dim_networks_inc_load:network_id"
+    "dim_lines:dim_lines_inc_load:line_id"
+    "dim_stations:dim_stations_inc_load:station_id"
+    "fact_station_lines:fact_station_lines_inc_load:station_line_id"
+    "dim_date:dim_date_inc_load:date_id"
+    "fact_passenger_entry_exit:fact_passenger_entry_exit_inc_load:entry_exit_id"
 )
 
-for TABLE in "${TABLES[@]}"
-do
+for ENTRY in "${TABLES[@]}"; do
 
-```
-echo "-----------------------------------------"
-echo "Processing table: ${TABLE}"
-echo "-----------------------------------------"
+    REAL_TABLE=$(echo $ENTRY | cut -d: -f1)
+    INC_LOAD_TABLE=$(echo $ENTRY | cut -d: -f2)
+    CHECK_COL=$(echo $ENTRY | cut -d: -f3)
 
-# Find primary key column
-PK_COLUMN=$(psql \
-    -h "${PG_HOST}" \
-    -U "${PG_USER}" \
-    -d "${PG_DB}" \
-    -t -c "
-    SELECT a.attname
-    FROM pg_index i
-    JOIN pg_attribute a
-    ON a.attrelid = i.indrelid
-    AND a.attnum = ANY(i.indkey)
-    WHERE i.indrelid = '${PG_SCHEMA}.${TABLE}'::regclass
-    AND i.indisprimary;" | xargs)
+    echo ""
+    echo "--------------------------------------------"
+    echo "Incremental: $REAL_TABLE"
+    echo "--------------------------------------------"
 
-echo "Primary Key Column: ${PK_COLUMN}"
+    # ── Get last value ──────────────────────────
+    LAST_VAL=$(run_psql "
+        SELECT last_value
+        FROM $PG_SCHEMA.sqoop_control
+        WHERE table_name='$REAL_TABLE';
+    ")
 
-# Get max primary key value
-LAST_VALUE=$(psql \
-    -h "${PG_HOST}" \
-    -U "${PG_USER}" \
-    -d "${PG_DB}" \
-    -t -c "
-    SELECT MAX(${PK_COLUMN})
-    FROM ${PG_SCHEMA}.${TABLE};" | xargs)
+    echo "Last Value: $LAST_VAL"
 
-echo "Last Value: ${LAST_VALUE}"
+    # ── Count new rows ──────────────────────────
+    NEW_COUNT=$(run_psql "
+        SELECT COUNT(*)
+        FROM $PG_SCHEMA.$INC_LOAD_TABLE
+        WHERE $CHECK_COL > $LAST_VAL;
+    ")
 
-sqoop import \
-    --connect "${PG_CONN}" \
-    --username "${PG_USER}" \
-    --password "${PG_PASSWORD}" \
-    --table "${PG_SCHEMA}.${TABLE}" \
-    --target-dir "${HDFS_DIR}/${TABLE}" \
-    --incremental append \
-    --check-column "${PK_COLUMN}" \
-    --last-value "${LAST_VALUE}" \
-    --as-parquetfile \
-    --num-mappers 1
+    echo "New rows: $NEW_COUNT"
 
-if [ $? -ne 0 ]; then
-    echo "❌ Incremental load failed for ${TABLE}"
-    exit 1
-else
-    echo "✅ Incremental load completed for ${TABLE}"
-fi
-```
+    # ── Skip if no data ─────────────────────────
+    if [ "$NEW_COUNT" -eq 0 ]; then
+        echo "No new data for $REAL_TABLE"
+
+        run_psql "
+            UPDATE $PG_SCHEMA.sqoop_control
+            SET status='NO_NEW_DATA',
+                last_run_time=NOW()
+            WHERE table_name='$REAL_TABLE';
+        "
+        continue
+    fi
+
+    # ── Max value ───────────────────────────────
+    MAX_VAL=$(run_psql "
+        SELECT MAX($CHECK_COL)
+        FROM $PG_SCHEMA.$INC_LOAD_TABLE;
+    ")
+
+    echo "Max Value: $MAX_VAL"
+
+    # ── Sqoop Import ────────────────────────────
+
+    SCHEMA_TABLE="${PG_SCHEMA}.${INC_LOAD_TABLE}"
+    sqoop import \
+        -D mapreduce.framework.name=local \
+        --connect $JDBC \
+        --username $PG_USER \
+        --password $PG_PASSWORD \
+        --query "SELECT * FROM ${PG_SCHEMA}.${INC_LOAD_TABLE} WHERE \$CONDITIONS AND ${CHECK_COL} > ${LAST_VAL}" \
+        --split-by $CHECK_COL \
+        --target-dir $HDFS_BASE/$REAL_TABLE \
+        --delete-target-dir \
+        -m 1
+
+    # ── Update control table ────────────────────
+    if [ $? -eq 0 ]; then
+
+        run_psql "
+            UPDATE $PG_SCHEMA.sqoop_control
+            SET last_value=$MAX_VAL,
+                last_row_count=$NEW_COUNT,
+                last_run_time=NOW(),
+                status='SUCCESS'
+            WHERE table_name='$REAL_TABLE';
+        "
+
+        echo "✓ SUCCESS: $REAL_TABLE"
+
+        hdfs dfs -ls $HDFS_BASE/$REAL_TABLE
+
+        #hive -e "MSCK REPAIR TABLE $HIVE_DB.$REAL_TABLE;"
+        beeline -u "jdbc:hive2://ip-172-31-12-74.eu-west-2.compute.internal:10000/default" \
+-e "MSCK REPAIR TABLE ${HIVE_DB}.${REAL_TABLE};"
+
+    else
+        echo "✗ FAILED: $REAL_TABLE"
+
+        run_psql "
+            UPDATE $PG_SCHEMA.sqoop_control
+            SET status='FAILED'
+            WHERE table_name='$REAL_TABLE';
+        "
+    fi
 
 done
 
-echo "========================================="
-echo "Incremental Load Completed Successfully"
-echo "========================================="
+echo "============================================"
+echo "Incremental Load Completed: $(date)"
+echo "============================================"
+
+# ── Final status ───────────────────────────────
+psql -c "
+SELECT table_name,
+       last_value,
+       last_row_count,
+       last_run_time,
+       status
+FROM $PG_SCHEMA.sqoop_control
+ORDER BY table_name;
+"
