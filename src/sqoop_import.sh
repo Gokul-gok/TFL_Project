@@ -12,7 +12,7 @@ PG_PASSWORD="admin123"
 PG_DB="testdb"
 PG_SCHEMA="aparna"
 
-HDFS_BASE="/tmp/gokul/tfl_proj/raw_incremental_load"
+HDFS_BASE="/tmp/tfl_project_hadoop"
 HIVE_DB="tfl_db"
 
 JDBC="jdbc:postgresql://$PG_HOST:$PG_PORT/$PG_DB"
@@ -103,7 +103,7 @@ for ENTRY in "${TABLES[@]}"; do
         --password $PG_PASSWORD \
         --query "SELECT * FROM ${PG_SCHEMA}.${INC_LOAD_TABLE} WHERE \$CONDITIONS AND ${CHECK_COL} > ${LAST_VAL}" \
         --split-by $CHECK_COL \
-        --target-dir $HDFS_BASE/$REAL_TABLE \
+        --target-dir $HDFS_BASE/${REAL_TABLE}_inc_load \
         --delete-target-dir \
         -m 1
 
