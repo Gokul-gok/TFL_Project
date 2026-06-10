@@ -1,6 +1,7 @@
 pipeline {
 agent any
-
+'''
+    
     
 environment {
     REMOTE_HOST     = '13.41.167.97'
@@ -88,5 +89,5 @@ post {
         echo 'SQOOP INCREMENTAL LOAD FAILED'
     }
 }
-
+'''
 }
