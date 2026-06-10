@@ -71,13 +71,13 @@ pipeline {
                 echo '========================================='
                 sh '''
                     sshpass -p "${REMOTE_PASSWORD}" scp -o StrictHostKeyChecking=no \
-                        src/sqoop_incremental_load.sh \
-                        ${REMOTE_USER}@${REMOTE_HOST}:/home/${REMOTE_USER}/sqoop_incremental_load.sh
+                        src/sqoop_import.sh \
+                        ${REMOTE_USER}@${REMOTE_HOST}:/home/${REMOTE_USER}/sqoop_import.sh
                 '''
                 sh '''
                     sshpass -p "${REMOTE_PASSWORD}" ssh -o StrictHostKeyChecking=no \
                         ${REMOTE_USER}@${REMOTE_HOST} \
-                        "chmod +x /home/${REMOTE_USER}/sqoop_incremental_load.sh && echo '✓ Script copied and made executable'"
+                        "chmod +x /home/${REMOTE_USER}/sqoop_import.sh && echo '✓ Script copied and made executable'"
                 '''
             }
         }
@@ -115,7 +115,7 @@ pipeline {
                          export PG_SCHEMA=${PG_SCHEMA}
                          export HDFS_BASE=${HDFS_BASE}
                          export HIVE_DB=${HIVE_DB}
-                         bash /home/${REMOTE_USER}/sqoop_incremental_load.sh"
+                         bash /home/${REMOTE_USER}/sqoop_import.sh"
                 '''
             }
         }
