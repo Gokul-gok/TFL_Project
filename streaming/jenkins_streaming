@@ -1,0 +1,141 @@
+pipeline {
+    agent any
+
+    environment {
+        EC2_HOST     = '13.41.167.97'
+        EC2_USER     = 'ec2-user'
+        PEM_KEY      = '~/Desktop/Training/test_key.pem'
+        REMOTE_DIR   = '/home/ec2-user'
+        KAFKA_BROKER = 'ip-172-31-6-42.eu-west-2.compute.internal:9092'
+        KAFKA_TOPIC  = 'tfl_arrivals'
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Copy Scripts to EC2') {
+            steps {
+                sh """
+                    scp -i ${PEM_KEY} -o StrictHostKeyChecking=no \
+                        streaming/src/send_data_to_kafka.py \
+                        streaming/src/write_kafka_to_hbase.py \
+                        ${EC2_USER}@${EC2_HOST}:${REMOTE_DIR}/
+                """
+            }
+        }
+
+        stage('Stop Existing Processes') {
+            steps {
+                sh """
+                    ssh -i ${PEM_KEY} -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} '
+                        pkill -f send_data_to_kafka.py  || true
+                        pkill -f write_kafka_to_hbase.py || true
+                        sleep 2
+                    '
+                """
+            }
+        }
+
+        stage('Start Kafka Producer') {
+            steps {
+                sh """
+                    ssh -i ${PEM_KEY} -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} '
+                        nohup python3 ${REMOTE_DIR}/send_data_to_kafka.py \
+                            > /tmp/producer_success.log 2>&1 &
+                        echo "Producer PID: \$!"
+                    '
+                """
+            }
+        }
+
+        stage('Start HBase Consumer') {
+            steps {
+                sh """
+                    ssh -i ${PEM_KEY} -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} '
+                        nohup python3 ${REMOTE_DIR}/write_kafka_to_hbase.py \
+                            > /tmp/hbase_consumer.log 2>&1 &
+                        echo "Consumer PID: \$!"
+                    '
+                """
+            }
+        }
+
+        stage('Verify Processes Running') {
+            steps {
+                sh """
+                    ssh -i ${PEM_KEY} -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} '
+                        sleep 5
+                        echo "=== Running Processes ==="
+                        ps aux | grep -E "send_data_to_kafka|write_kafka_to_hbase" | grep -v grep
+                    '
+                """
+            }
+        }
+
+        stage('Verify Kafka Topic') {
+            steps {
+                sh """
+                    ssh -i ${PEM_KEY} -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} '
+                        echo "=== Kafka Topic Details ==="
+                        kafka-topics --bootstrap-server ${KAFKA_BROKER} \
+                            --describe --topic ${KAFKA_TOPIC}
+
+                        echo "=== Message Count ==="
+                        kafka-run-class kafka.tools.GetOffsetShell \
+                            --broker-list ${KAFKA_BROKER} \
+                            --topic ${KAFKA_TOPIC} --time -1
+                    '
+                """
+            }
+        }
+
+        stage('Verify HBase Table') {
+            steps {
+                sh """
+                    ssh -i ${PEM_KEY} -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} '
+                        echo "=== HBase Record Count ==="
+                        echo "count '"'"'${KAFKA_TOPIC}'"'"'" | hbase shell -n
+
+                        echo "=== Sample HBase Records ==="
+                        echo "scan '"'"'${KAFKA_TOPIC}'"'"', {LIMIT => 5}" | hbase shell -n
+                    '
+                """
+            }
+        }
+
+        stage('Tail Logs') {
+            steps {
+                sh """
+                    ssh -i ${PEM_KEY} -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} '
+                        echo "=== Producer Log (last 20 lines) ==="
+                        tail -20 /tmp/producer_success.log
+
+                        echo "=== HBase Consumer Log (last 20 lines) ==="
+                        tail -20 /tmp/hbase_consumer.log
+                    '
+                """
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Streaming pipeline deployed and verified successfully.'
+        }
+        failure {
+            sh """
+                ssh -i ${PEM_KEY} -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} '
+                    echo "=== Producer Log ==="
+                    tail -50 /tmp/producer_success.log || true
+                    echo "=== Consumer Log ==="
+                    tail -50 /tmp/hbase_consumer.log || true
+                ' || true
+            """
+        }
+    }
+}
