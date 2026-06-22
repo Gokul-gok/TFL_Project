@@ -103,7 +103,7 @@ for ENTRY in "${TABLES[@]}"; do
         --password $PG_PASSWORD \
         --query "SELECT * FROM ${PG_SCHEMA}.${INC_LOAD_TABLE} WHERE \$CONDITIONS AND ${CHECK_COL} > ${LAST_VAL}" \
         --split-by $CHECK_COL \
-        --target-dir $HDFS_BASE/${REAL_TABLE}_inc_load \
+        --target-dir $HDFS_BASE/${REAL_TABLE}_full_load \
         --append \
         -m 1
 
